@@ -26,16 +26,14 @@ public class TBMeta {
 	private List<ColMeta> cols;// 表中的列
 	private List<ColMeta> pks;// 表的主键列
 
-	public TBMeta(String schema, String name, DataSource ds)
-			throws DBMetaException {
+	public TBMeta(String schema, String name, DataSource ds) throws DBMetaException {
 		schema = StringUtil.toUpperCase(StringUtil.trimDown(schema));
 		this.name = StringUtil.toLowerCase(StringUtil.trimDown(name));
 		pks = new ArrayList<ColMeta>();
 		Connection conn = null;
 		try {
 			conn = ds.getConnection();
-			String realTBName = getTableRealName(schema,
-					StringUtil.toUpperCase(this.name), conn);
+			String realTBName = getTableRealName(schema, StringUtil.toUpperCase(this.name), conn);
 			if (realTBName == null) {
 				throw new DBMetaException("表[" + schema + "." + name + "]不存在.");
 			}
@@ -64,15 +62,28 @@ public class TBMeta {
 			pks = new ArrayList<ColMeta>();
 			Document doc = com.caijun.utils.xml.XMLHandler.loadXMLString(xml);
 			Node table = XMLHandler.getSubNode(doc, "t");
-			name = StringUtil.toLowerCase(StringUtil.trimDown(XMLHandler
-					.getTagValue(table, "n")));
-			List<Node> colNodes = XMLHandler.getNodes(
-					XMLHandler.getSubNode(table, "cs"), "c");
-			for (Iterator<Node> iterator = colNodes.iterator(); iterator
-					.hasNext();) {
+			name = StringUtil.toLowerCase(StringUtil.trimDown(XMLHandler.getTagValue(table, "n")));
+			List<Node> colNodes = XMLHandler.getNodes(XMLHandler.getSubNode(table, "cs"), "c");
+			for (Iterator<Node> iterator = colNodes.iterator(); iterator.hasNext();) {
 				Node col = iterator.next();
-				
-				ColMeta colMeta = new ColMeta(col.toString());
+
+				String size = XMLHandler.getTagValue(col, "s");
+				String digits = XMLHandler.getTagValue(col, "d");
+				String pk = XMLHandler.getTagAttribute(col, "pk");
+				String fk = XMLHandler.getTagAttribute(col, "fk");
+				String nul = XMLHandler.getTagAttribute(col, "nvl");
+				if (pk == null) {
+					pk = "false";
+				}
+				if (fk == null) {
+					fk = "false";
+				}
+				if (nul == null) {
+					nul = "true";
+				}
+				ColMeta colMeta = new ColMeta(XMLHandler.getTagValue(col, "n"), XMLHandler.getTagValue(col, "t"),
+						size == null ? 0 : Integer.parseInt(size), digits == null ? 0 : Integer.parseInt(digits),
+						Boolean.parseBoolean(nul), Boolean.parseBoolean(pk));
 				cols.add(colMeta);
 				if (colMeta.ispk) {
 					pks.add(colMeta);
@@ -130,10 +141,8 @@ public class TBMeta {
 			if (!col.nul) {
 				sb.append(" nvl='false' ");
 			}
-			sb.append("><n>").append(col.getName()).append("</n><t>")
-					.append(col.getType()).append("</t><s>")
-					.append(col.getSize()).append("</s><d>")
-					.append(col.getDigits()).append("</d></c>" + line);
+			sb.append("><n>").append(col.getName()).append("</n><t>").append(col.getType()).append("</t><s>")
+					.append(col.getSize()).append("</s><d>").append(col.getDigits()).append("</d></c>" + line);
 		}
 		sb.append("</cs>").append(line);
 		sb.append("</t>");
@@ -162,11 +171,10 @@ public class TBMeta {
 	 * @return
 	 */
 	public String createTableSQL(String schema) {
-		StringBuffer sql = new StringBuffer("create table ")
-				.append(schema == null ? "" : schema + ".").append(this.name)
-				.append(" (").append(line);
+		StringBuffer sql = new StringBuffer("create table ").append(schema == null ? "" : schema + ".")
+				.append(this.name).append(" (").append(line);
 		for (ColMeta col : cols) {
-			// sql.append("  ").append(col.getName()).append("   ")
+			// sql.append(" ").append(col.getName()).append(" ")
 			// .append(metaEngine.getColTypeOfDB(col));
 			if (!col.nul) {
 				sql.append(" not null");
@@ -186,8 +194,7 @@ public class TBMeta {
 	 * @return
 	 */
 	public String dropTableSQL(String schema) {
-		StringBuffer sql = new StringBuffer("drop table ")
-				.append(schema == null ? "" : schema + ".").append(name)
+		StringBuffer sql = new StringBuffer("drop table ").append(schema == null ? "" : schema + ".").append(name)
 				.append(";");
 		return sql.toString();
 	}
@@ -203,10 +210,8 @@ public class TBMeta {
 		if (pks.size() == 0) {
 			return "";
 		}
-		StringBuffer sql = new StringBuffer("alter table ")
-				.append(schema == null ? "" : schema + ".").append(name)
-				.append(" add constraint ").append(name)
-				.append("_PK primary key (");
+		StringBuffer sql = new StringBuffer("alter table ").append(schema == null ? "" : schema + ".").append(name)
+				.append(" add constraint ").append(name).append("_PK primary key (");
 		for (ColMeta pk : pks) {
 			sql.append(pk.name).append(",");
 		}
@@ -262,8 +267,7 @@ public class TBMeta {
 	 * @return
 	 */
 	public String cleanDatasSQL(String schema) {
-		return "truncate table " + schema == null ? "" : schema + "."
-				+ this.name + ";";
+		return "truncate table " + schema == null ? "" : schema + "." + this.name + ";";
 	}
 
 	static public class ColMeta {
@@ -275,8 +279,7 @@ public class TBMeta {
 		private boolean ispk;// 是否是主键
 		private boolean isfk;// 是否是外键
 
-		public ColMeta(String name, String type, int size, int digits,
-				boolean nul, boolean ispk) {
+		public ColMeta(String name, String type, int size, int digits, boolean nul, boolean ispk) {
 			super();
 			this.name = StringUtil.toLowerCase(StringUtil.trimDown(name));
 			this.type = StringUtil.toUpperCase(StringUtil.trimDown(type));
@@ -284,32 +287,6 @@ public class TBMeta {
 			this.digits = digits;
 			this.nul = nul;
 			this.ispk = ispk;
-		}
-
-		public ColMeta(String xml) throws XMLException {
-			super();
-			System.out.println(xml);
-			Document doc = com.caijun.utils.xml.XMLHandler.loadXMLString(xml);
-			String size = XMLHandler.getTagValue(doc, "s");
-			String digits = XMLHandler.getTagValue(doc, "d");
-			String pk = XMLHandler.getTagAttribute(doc, "pk");
-			String fk = XMLHandler.getTagAttribute(doc, "fk");
-			String nul = XMLHandler.getTagAttribute(doc, "nvl");
-			if (pk == null) {
-				pk = "false";
-			}
-			if (fk == null) {
-				fk = "false";
-			}
-			if (nul == null) {
-				nul = "true";
-			}
-			this.name = XMLHandler.getTagValue(doc, "n");
-			this.type = XMLHandler.getTagValue(doc, "t");
-			this.size = size == null ? 0 : Integer.parseInt(size);
-			this.digits = digits == null ? 0 : Integer.parseInt(digits);
-			this.nul = Boolean.parseBoolean(nul);
-			this.ispk = Boolean.parseBoolean(pk);
 		}
 
 		public String toXML() {
@@ -323,8 +300,7 @@ public class TBMeta {
 			if (!nul) {
 				sb.append(" nvl='false' ");
 			}
-			sb.append("><n>").append(this.name).append("</n><t>")
-					.append(this.type).append("</t><s>").append(this.size)
+			sb.append("><n>").append(this.name).append("</n><t>").append(this.type).append("</t><s>").append(this.size)
 					.append("</s><d>").append(this.digits).append("</d></c>");
 			return sb.toString();
 		}
@@ -333,8 +309,7 @@ public class TBMeta {
 		public String toString() {
 			StringBuffer sb = new StringBuffer();
 			if (this.size > 0) {
-				sb.append(this.name).append("   ")
-						.append(this.type.replaceAll("\\(.*\\)", ""));
+				sb.append(this.name).append("   ").append(this.type.replaceAll("\\(.*\\)", ""));
 				sb.append("(").append(this.size);
 				if (this.digits > 0) {
 					sb.append("," + this.digits);
@@ -380,8 +355,8 @@ public class TBMeta {
 		}
 	}
 
-	private Set<String> getPKColFromDataSource(DatabaseMetaData dbmd,
-			String schema, String tbName) throws SQLException {
+	private Set<String> getPKColFromDataSource(DatabaseMetaData dbmd, String schema, String tbName)
+			throws SQLException {
 		Set<String> set = new HashSet<String>();
 		ResultSet rs = null;
 		try {
@@ -402,10 +377,9 @@ public class TBMeta {
 		return set;
 	}
 
-	private String getTableRealName(String schema, String tbName,
-			Connection conn) throws SQLException {
-		String sql = "select table_name from all_tables where owner='" + schema
-				+ "' and NLS_UPPER(table_name)='" + tbName + "'";
+	private String getTableRealName(String schema, String tbName, Connection conn) throws SQLException {
+		String sql = "select table_name from all_tables where owner='" + schema + "' and NLS_UPPER(table_name)='"
+				+ tbName + "'";
 		Statement statement = null;
 		ResultSet rs = null;
 		try {
@@ -429,8 +403,8 @@ public class TBMeta {
 		}
 	}
 
-	private List<ColMeta> getColsFromDataSource(DatabaseMetaData dbmd,
-			String schema, String tbName) throws SQLException {
+	private List<ColMeta> getColsFromDataSource(DatabaseMetaData dbmd, String schema, String tbName)
+			throws SQLException {
 		List<ColMeta> cols = new ArrayList<ColMeta>();
 		ResultSet rs = null;
 		try {
@@ -439,11 +413,9 @@ public class TBMeta {
 
 			rs = dbmd.getColumns(null, schema, tbName, null);
 			while (rs.next()) {
-				String name = StringUtil.toLowerCase(rs
-						.getString("COLUMN_NAME"));
-				ColMeta colMeta = new ColMeta(name, rs.getString("TYPE_NAME"),
-						rs.getInt("COLUMN_SIZE"), rs.getInt("DECIMAL_DIGITS"),
-						rs.getBoolean("NULLABLE"), pkSet.contains(name));
+				String name = StringUtil.toLowerCase(rs.getString("COLUMN_NAME"));
+				ColMeta colMeta = new ColMeta(name, rs.getString("TYPE_NAME"), rs.getInt("COLUMN_SIZE"),
+						rs.getInt("DECIMAL_DIGITS"), rs.getBoolean("NULLABLE"), pkSet.contains(name));
 				cols.add(colMeta);
 			}
 		} catch (SQLException e) {
